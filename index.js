@@ -1,5 +1,6 @@
 
 const DysonPureCoolPlatform = require('./src/dyson-pure-cool-platform');
+const UUIDGen = require('./src/dyson-pure-cool-device').UUIDGen;
 
 /**
  * Defines the export of the platform module.
@@ -7,4 +8,9 @@ const DysonPureCoolPlatform = require('./src/dyson-pure-cool-platform');
  */
 module.exports = function (homebridge) {
     homebridge.registerPlatform('homebridge-dyson-pure-cool', 'DysonPureCoolPlatform', DysonPureCoolPlatform, true);
+    var FakeGatoHistoryService = require('fakegato-history')(homebridge);
+    Accessory.log = this.log;
+    this.loggingService.addEntry({time: Math.round(new Date().valueOf() / 1000), temp: this.temperature, humidity: this.humidity, ppm: this.ppm});
+    const historyService = new FakeGatoHistoryService('accessory-name', UUIDGen, global.fakegatoOptions);
+
 }
