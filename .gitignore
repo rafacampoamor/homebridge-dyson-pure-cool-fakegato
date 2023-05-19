@@ -64,3 +64,4 @@ typings/
 config.json
 persist
 accessories
+.DS_Store
