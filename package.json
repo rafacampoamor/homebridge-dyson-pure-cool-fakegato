@@ -1,7 +1,7 @@
 {
   "name": "homebridge-dyson-pure-cool",
   "displayName": "Dyson",
-  "version": "2.7.9",
+  "version": "2.7.10",
   "description": "Plugin for using the Dyson Pure Cool fans in homebridge.",
   "license": "MIT",
   "keywords": [
@@ -15,8 +15,9 @@
     "test": "tap --no-coverage test/*.js"
   },
   "dependencies": {
-    "mqtt": "~> 2.15.0",
-    "request": "^2.88.0"
+    "mqtt": "^2.15.0",
+    "request": "^2.88.0",
+    "fakegato-history": "^0.6.1"
   },
   "repository": {
     "type": "git",

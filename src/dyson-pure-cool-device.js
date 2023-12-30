@@ -1,5 +1,7 @@
 const productTypeInfo = require('./productTypeInfo');
 const mqtt = require('mqtt');
+const fakegatoHistory = require('fakegato-history');
+
 
 /**
  * Represents a physical Dyson device.
@@ -21,6 +23,12 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     device.platform = platform;
     device.mqttClient = null;
 
+    // Creates a fakegato-history instance
+    this.fakegatoHistoryService = new fakegatoHistory('room', this, {
+        storage: 'fs'
+    });
+
+
     // Logs the product type, so that new devices can be easily added in the future
     platform.log.info('Device with serial number ' + serialNumber + ': product type ' + productType);
 
@@ -33,12 +41,12 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
     }
 
     // Gets all accessories from the platform that match the serial number
-    let unusedDeviceAccessories = platform.accessories.filter(function(a) { return a.context.serialNumber === serialNumber; });
+    let unusedDeviceAccessories = platform.accessories.filter(function (a) { return a.context.serialNumber === serialNumber; });
     let newDeviceAccessories = [];
     let deviceAccessories = [];
 
     // Gets the air purifier accessory
-    let airPurifierAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'AirPurifierAccessory'; });
+    let airPurifierAccessory = unusedDeviceAccessories.find(function (a) { return a.context.kind === 'AirPurifierAccessory'; });
     if (airPurifierAccessory) {
         unusedDeviceAccessories.splice(unusedDeviceAccessories.indexOf(airPurifierAccessory), 1);
     } else {
@@ -56,7 +64,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         if (config.isSingleAccessoryModeEnabled) {
             airQualityAccessory = airPurifierAccessory;
         } else {
-            airQualityAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'AirQualityAccessory'; });
+            airQualityAccessory = unusedDeviceAccessories.find(function (a) { return a.context.kind === 'AirQualityAccessory'; });
             if (airQualityAccessory) {
                 unusedDeviceAccessories.splice(unusedDeviceAccessories.indexOf(airQualityAccessory), 1);
             } else {
@@ -78,7 +86,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         } else if (!device.info.hasHeating && config.isAirQualitySensorEnabled && config.isSingleSensorAccessoryModeEnabled) {
             temperatureAccessory = airQualityAccessory;
         } else {
-            temperatureAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'TemperatureAccessory'; });
+            temperatureAccessory = unusedDeviceAccessories.find(function (a) { return a.context.kind === 'TemperatureAccessory'; });
             if (temperatureAccessory) {
                 unusedDeviceAccessories.splice(unusedDeviceAccessories.indexOf(temperatureAccessory), 1);
             } else {
@@ -100,7 +108,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         } else if (!device.info.hasHumidifier && config.isAirQualitySensorEnabled && config.isSingleSensorAccessoryModeEnabled) {
             humidityAccessory = airQualityAccessory;
         } else {
-            humidityAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'HumidityAccessory'; });
+            humidityAccessory = unusedDeviceAccessories.find(function (a) { return a.context.kind === 'HumidityAccessory'; });
             if (humidityAccessory) {
                 unusedDeviceAccessories.splice(unusedDeviceAccessories.indexOf(humidityAccessory), 1);
             } else {
@@ -120,7 +128,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         if (config.isSingleAccessoryModeEnabled) {
             switchAccessory = airPurifierAccessory;
         } else {
-            switchAccessory = unusedDeviceAccessories.find(function(a) { return a.context.kind === 'SwitchAccessory'; });
+            switchAccessory = unusedDeviceAccessories.find(function (a) { return a.context.kind === 'SwitchAccessory'; });
             if (switchAccessory) {
                 unusedDeviceAccessories.splice(unusedDeviceAccessories.indexOf(switchAccessory), 1);
             } else {
@@ -364,7 +372,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             }));
 
             // Sets the interval for status updates
-            updateIntervalHandle = setInterval(function() {
+            updateIntervalHandle = setInterval(function () {
                 try {
                     device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
                         msg: 'REQUEST-CURRENT-STATE',
@@ -409,17 +417,25 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
         // Parses the payload
         const content = JSON.parse(payload);
 
+        // Variables for FakeGato usage
+        let temperature = 0;
+        let humidity = 0;
+        let airQuality = 0;
         // Updates the environmental data
         if (content.msg === 'ENVIRONMENTAL-CURRENT-SENSOR-DATA') {
 
             // Sets the sensor data for temperature
             if (content['data']['tact'] !== 'OFF' && temperatureService) {
                 temperatureService.updateCharacteristic(Characteristic.CurrentTemperature, (Number.parseInt(content['data']['tact']) / 10.0) - 273.0 + (config.temperatureOffset || 0.0));
+                temperature = (Number.parseInt(content['data']['tact']) / 10.0) - 273.0;
+                temperatureService.updateCharacteristic(Characteristic.CurrentTemperature, temperature);
+
             }
 
             // Sets the sensor data for humidity
             if (content['data']['hact'] !== 'OFF' && humidityService) {
-                humidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, Number.parseInt(content['data']['hact']) + (config.humidityOffset || 0.0));
+                humidity = Number.parseInt(content['data']['hact']);
+                humidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, humidity);
             }
             if (content['data']['hact'] !== 'OFF' && humidifierService) {
                 humidifierService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, Number.parseInt(content['data']['hact']) + (config.humidityOffset || 0.0));
@@ -519,10 +535,17 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                     airQualityService.updateCharacteristic(Characteristic.PM10Density, pm10)
                     airQualityService.updateCharacteristic(Characteristic.VOCDensity, va10)
                     airQualityService.updateCharacteristic(Characteristic.NitrogenDioxideDensity, noxl);
+                    airQuality = Math.max(pm25Quality, pm10Quality, va10Quality, noxlQuality, hchoQuality);
                 } else {
                     airQualityService.updateCharacteristic(Characteristic.AirQuality, Math.max(pQuality, vQuality));
+                    airQuality = Math.max(pQuality, vQuality);
+
                 }
+
             }
+
+            // Registers the data in Fakegato
+            this.fakegatoHistoryService.addEntry({ time: new Date().getTime() / 1000, temp: temperature, humidity: humidity, ppm: airQuality });
 
             return;
         }
@@ -584,7 +607,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 const cflr = content['product-state']['cflr'] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr']);
                 const hflr = content['product-state']['hflr'] == "INV" ? 100 : Number.parseInt(content['product-state']['hflr']);
                 airPurifierService.updateCharacteristic(Characteristic.FilterChangeIndication, Math.min(cflr, hflr) >= 10 ? Characteristic.FilterChangeIndication.FILTER_OK : Characteristic.FilterChangeIndication.CHANGE_FILTER);
-                airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr,hflr));
+                airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr, hflr));
             }
             if (content['product-state']['filf']) {
 
@@ -679,7 +702,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
                 const cflr = content['product-state']['cflr'][1] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr'][1]);
                 const hflr = content['product-state']['cflr'][1] == "INV" ? 100 : Number.parseInt(content['product-state']['cflr'][1]);
                 airPurifierService.updateCharacteristic(Characteristic.FilterChangeIndication, Math.min(cflr, hflr) >= 10 ? Characteristic.FilterChangeIndication.FILTER_OK : Characteristic.FilterChangeIndication.CHANGE_FILTER);
-                airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr,hflr));
+                airPurifierService.updateCharacteristic(Characteristic.FilterLifeLevel, Math.min(cflr, hflr));
             }
             if (content['product-state']['filf']) {
 
@@ -873,7 +896,7 @@ function DysonPureCoolDevice(platform, name, serialNumber, productType, version,
             device.mqttClient.publish(productType + '/' + serialNumber + '/command', JSON.stringify({
                 msg: 'STATE-SET',
                 time: new Date().toISOString(),
-                data: { humt: ('0000' +  Math.min(70, Math.max(30, value - (config.humidityOffset || 0.0))).toString()).slice(-4) }
+                data: { humt: ('0000' + Math.min(70, Math.max(30, value - (config.humidityOffset || 0.0))).toString()).slice(-4) }
             }));
             callback(null);
         });
